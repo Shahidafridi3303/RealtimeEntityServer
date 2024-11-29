@@ -38,20 +38,20 @@ static public class NetworkServerProcessing
 
         foreach (var clientID in networkServer.GetAllConnectedClientIDs())
         {
-            Debug.Log($"Server: Sending balloon spawn to client ID {clientID}");
             SendMessageToClient(msg, clientID);
         }
     }
 
-
-    public static void HandleBalloonPopped(int balloonID)
+    public static void HandleBalloonPopped(int balloonID, int clientID)
     {
+        Debug.Log($"Server: Client {clientID} popped balloon ID {balloonID}");
+
         activeBalloons.RemoveAll(b => b.ID == balloonID);
 
         string msg = $"{ServerToClientSignifiers.RemoveBalloon},{balloonID}";
-        foreach (var clientID in networkServer.GetAllConnectedClientIDs())
+        foreach (var otherClientID in networkServer.GetAllConnectedClientIDs())
         {
-            SendMessageToClient(msg, clientID);
+            SendMessageToClient(msg, otherClientID);
         }
     }
 
@@ -77,19 +77,20 @@ static public class NetworkServerProcessing
         if (signifier == ClientToServerSignifiers.BalloonPopped)
         {
             int balloonID = int.Parse(csv[1]);
-            HandleBalloonPopped(balloonID);
+            HandleBalloonPopped(balloonID, clientConnectionID);
         }
     }
 
     public static void ConnectionEvent(int clientConnectionID)
     {
-        Debug.Log($"Client connected: ID {clientConnectionID}");
+        Debug.Log($"Server: Client connected: ID {clientConnectionID}");
         SendUnpoppedBalloons(clientConnectionID);
     }
 
     public static void DisconnectionEvent(int clientConnectionID)
     {
-        Debug.Log($"Client disconnected: ID {clientConnectionID}");
+        Debug.Log($"Server: Client disconnected: ID {clientConnectionID}");
+        // Additional cleanup logic if needed
     }
 
     #endregion
