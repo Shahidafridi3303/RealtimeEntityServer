@@ -1,65 +1,110 @@
-using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
 static public class NetworkServerProcessing
 {
+    static NetworkServer networkServer;
+    static GameLogic gameLogic;
 
-    #region Send and Receive Data Functions
-    static public void ReceivedMessageFromClient(string msg, int clientConnectionID, TransportPipeline pipeline)
+    // List to track active balloons
+    static List<BalloonData> activeBalloons = new List<BalloonData>();
+
+    #region Balloon Data Management
+
+    public class BalloonData
     {
-        Debug.Log("Network msg received =  " + msg + ", from connection id = " + clientConnectionID + ", from pipeline = " + pipeline);
+        public int ID;
+        public float xPercent;
+        public float yPercent;
 
-        string[] csv = msg.Split(',');
-        int signifier = int.Parse(csv[0]);
-
-        if (signifier == ClientToServerSignifiers.asd)
+        public BalloonData(int id, float x, float y)
         {
-
+            ID = id;
+            xPercent = x;
+            yPercent = y;
         }
-        // else if (signifier == ClientToServerSignifiers.asd)
-        // {
-
-        // }
-
-        //gameLogic.DoSomething();
     }
-    static public void SendMessageToClient(string msg, int clientConnectionID, TransportPipeline pipeline)
+
+    public static void SpawnBalloon()
     {
-        networkServer.SendMessageToClient(msg, clientConnectionID, pipeline);
+        int balloonID = Random.Range(1, 1000000);
+        float xPercent = Random.Range(0f, 1f);
+        float yPercent = Random.Range(0f, 1f);
+
+        activeBalloons.Add(new BalloonData(balloonID, xPercent, yPercent));
+
+        string msg = $"{ServerToClientSignifiers.SpawnBalloon},{balloonID},{xPercent},{yPercent}";
+        Debug.Log($"Server: Spawning balloon ID {balloonID} at ({xPercent}, {yPercent})");
+
+        foreach (var clientID in networkServer.GetAllConnectedClientIDs())
+        {
+            Debug.Log($"Server: Sending balloon spawn to client ID {clientID}");
+            SendMessageToClient(msg, clientID);
+        }
+    }
+
+
+    public static void HandleBalloonPopped(int balloonID)
+    {
+        activeBalloons.RemoveAll(b => b.ID == balloonID);
+
+        string msg = $"{ServerToClientSignifiers.RemoveBalloon},{balloonID}";
+        foreach (var clientID in networkServer.GetAllConnectedClientIDs())
+        {
+            SendMessageToClient(msg, clientID);
+        }
+    }
+
+    public static void SendUnpoppedBalloons(int clientID)
+    {
+        string msg = $"{ServerToClientSignifiers.SendUnpoppedBalloons}";
+        foreach (var balloon in activeBalloons)
+        {
+            msg += $",{balloon.ID},{balloon.xPercent},{balloon.yPercent}";
+        }
+        SendMessageToClient(msg, clientID);
     }
 
     #endregion
 
-    #region Connection Events
+    #region Event Handling
 
-    static public void ConnectionEvent(int clientConnectionID)
+    public static void ReceivedMessageFromClient(string msg, int clientConnectionID)
     {
-        Debug.Log("Client connection, ID == " + clientConnectionID);
+        string[] csv = msg.Split(',');
+        int signifier = int.Parse(csv[0]);
+
+        if (signifier == ClientToServerSignifiers.BalloonPopped)
+        {
+            int balloonID = int.Parse(csv[1]);
+            HandleBalloonPopped(balloonID);
+        }
     }
-    static public void DisconnectionEvent(int clientConnectionID)
+
+    public static void ConnectionEvent(int clientConnectionID)
     {
-        Debug.Log("Client disconnection, ID == " + clientConnectionID);
+        Debug.Log($"Client connected: ID {clientConnectionID}");
+        SendUnpoppedBalloons(clientConnectionID);
+    }
+
+    public static void DisconnectionEvent(int clientConnectionID)
+    {
+        Debug.Log($"Client disconnected: ID {clientConnectionID}");
     }
 
     #endregion
 
     #region Setup
-    static NetworkServer networkServer;
-    static GameLogic gameLogic;
 
-    static public void SetNetworkServer(NetworkServer NetworkServer)
+    public static void SetNetworkServer(NetworkServer server) => networkServer = server;
+    public static void SetGameLogic(GameLogic logic) => gameLogic = logic;
+
+    public static void SendMessageToClient(string msg, int clientConnectionID)
     {
-        networkServer = NetworkServer;
+        networkServer.SendMessageToClient(msg, clientConnectionID);
     }
-    static public NetworkServer GetNetworkServer()
-    {
-        return networkServer;
-    }
-    static public void SetGameLogic(GameLogic GameLogic)
-    {
-        gameLogic = GameLogic;
-    }
+
+    public static NetworkServer GetNetworkServer() => networkServer;
 
     #endregion
 }
@@ -67,13 +112,14 @@ static public class NetworkServerProcessing
 #region Protocol Signifiers
 static public class ClientToServerSignifiers
 {
-    public const int asd = 1;
+    public const int BalloonPopped = 1;
+    public const int RequestUnpoppedBalloons = 2;
 }
 
 static public class ServerToClientSignifiers
 {
-    public const int asd = 1;
+    public const int SpawnBalloon = 1;
+    public const int RemoveBalloon = 2;
+    public const int SendUnpoppedBalloons = 3;
 }
-
 #endregion
-
